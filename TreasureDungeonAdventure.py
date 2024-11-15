@@ -43,8 +43,11 @@ TRAP_MESS = '''Вы вошли в комнату, и тут же услышал�
 MONSTER_MESS = '''Вы вошли в комнату, и перед вами появился ужасный монстр! Он рычит и готов напасть. Что будете делать?\n
 Нажмите "y", чтобы сразиться, или любую другую клавишу, чтобы убежать.'''
 
-NEXT_LEVEL_MESS = '''Поздравляем! Вы прошли первый уровень.\n
-У Вас {lives} жизней и {points} очков.'''
+NEXT_LEVEL_MESS = '''Поздравляем! Вы прошли {floor} уровень.\n
+У вас {lives} жизней и {points} очков.\n
+Вы поднялись на следующий этаж, и впереди вас ждут еще более опасные испытания! 
+Но не бойтесь — каждый новый этаж дает шанс на большее количество сокровищ.\n
+Готовы продолжить приключение? Нажмите "y" для перехода на следующий этаж или "n" для выхода из игры.'''
 
 class Player:
   def __init__(self, lives, points):
@@ -81,6 +84,7 @@ class Player:
   def trap_room(self):
     print(TRAP_MESS)
 
+    self.stop_event.clear()
     countdown_thread = threading.Thread(target=self.countdown) 
     input_thread = threading.Thread(target=self.get_input)
 
@@ -90,9 +94,9 @@ class Player:
     countdown_thread.join()
     input_thread.join()
 
-    if self.input_received and self.player_input == 'y' and not self.stop_event.is_set():
+    if self.input_received and self.player_input == 'y':
       return 'Вы выбрались! Жизни не потеряны.'
-    elif self.stop_event.is_set() and (not self.input_received or self.player_input != 'y'):
+    elif self.stop_event.is_set() and (not self.input_received or self.player_input == 'y'):
       self.lives -= 1
       return f'Вы не успели выбраться! Ловушка сработала. Осталось жизней: {self.lives}' 
     else:
@@ -111,17 +115,26 @@ class Player:
         self.lives -= 1
         return f'Монстр вас ранил! Осталось жизней: {self.lives}'
     else:
-      if len(all_in_rooms) >= 2:
-        return f'Вы вернулись в {all_in_rooms[-2]}'
+      # if len(all_in_rooms) >= 2:
+      #   return f'Вы вернулись в {all_in_rooms[-2]}'
       return 'Вы решили отступить и вернулись назад.'
 
 class Room:
   def __init__(self):
     self.name = None
 
-  def get_room(self, player):
+  def get_room(self, player, floor_number):
     room_types = ['treasure', 'trap', 'monster']
-    chosen_room = random.choice(room_types)
+
+    if floor_number == 1:
+      room_weight = [3, 1, 0]
+    if floor_number == 2:
+      room_weight = [3, 3, 1]
+    if floor_number == 3:
+      room_weight = [2, 3, 3]
+  
+    chosen_room = random.choices(room_types, room_weight)[0]
+
     if chosen_room == 'treasure':
       self.name = 'treasure'
       treasure = random.randint(1, 5)
@@ -132,6 +145,26 @@ class Room:
     elif chosen_room == 'monster':
       self.name = 'monster' 
       return player.monster_room()
+
+class Dungeon:
+  def __init__(self):
+    self.floor = 1
+    
+  def get_map(self, player):
+    all_floors = []
+    for floor_number in range(1, 4):
+      rooms_on_floor = []
+      number_of_rooms = floor_number * 3
+      for room_number in range(number_of_rooms):
+        room = Room()
+        room_result = room.get_room(player, floor_number)
+        rooms_on_floor.append(room.name)
+        print(room_result)
+      all_floors.append(rooms_on_floor)
+      print(NEXT_LEVEL_MESS.format(floor = floor_number, lives = player.lives, points = player.points))
+      get_move(input())
+    return all_floors
+
       
 
 def get_move(s):
@@ -150,32 +183,7 @@ def get_move(s):
     return BAD_MOVE_MESS
 
 
-player1 = Player(3, 0)
-all_in_rooms = []
+player = Player(3, 0)
+dungeon = Dungeon()
 
-print(WELCOME_MESS)
-while player1.lives > 0 and len(all_in_rooms) < 4:
-    s = input('Ваш ход: ').lower()
-    move = get_move(s)
-    if s in 'ien':
-      print(move)
-      continue
-    if move.startswith('Неверная команда'):
-      print(move)
-      continue
-    
-    room = Room()
-    room_result = room.get_room(player1)
-    all_in_rooms.append(room.name)
-    print(room_result)
-
-    if player1.lives <= 0:
-      print('Вы потеряли все жизни! Игра окончена.')
-      break
-
-if player1.lives > 0:
-  print(NEXT_LEVEL_MESS.format(lives = player1.lives, points = player1.points))
-  print(all_in_rooms)
-
-
-
+print(dungeon.get_map(player))
