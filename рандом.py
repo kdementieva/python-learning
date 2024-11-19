@@ -435,32 +435,94 @@
 
 # ---------------------------------------------------------------------------------------------------------------------------------
 #BFS
-from collections import deque
+# from collections import deque
 
-def bfs(graph, start):
-    visited = set()  # Множество для отслеживания посещенных вершин
-    queue = deque()   # Очередь для обхода
+# def bfs(graph, start):
+#     visited = set()  # Множество для отслеживания посещенных вершин
+#     queue = deque()   # Очередь для обхода
 
-    queue.append(start)
-    visited.add(start)
+#     queue.append(start)
+#     visited.add(start)
 
-    while queue:
-        vertex = queue.popleft()
-        print(vertex)  # Посещаем вершину (выполняем необходимые действия)
+#     while queue:
+#         vertex = queue.popleft()
+#         print(vertex)  # Посещаем вершину (выполняем необходимые действия)
 
-        for neighbor in graph[vertex]:
-            if neighbor not in visited:
-                queue.append(neighbor)
-                visited.add(neighbor)
+#         for neighbor in graph[vertex]:
+#             if neighbor not in visited:
+#                 queue.append(neighbor)
+#                 visited.add(neighbor)
+
+# # Пример использования:
+
+# graph = {
+#     0: [1,2,3],
+#     1: [0,2],
+#     2: [0,1,4],
+#     3: [0],
+#     4: [2]
+# }
+
+# bfs(graph, 0)
+
+# -----------------------------------------------------------------------------------------------------
+# Merge sort
+
+# def merge_sort(arr):
+#     # Шаг 1: Проверяем, если длина массива больше 1, то продолжаем сортировку
+#     if len(arr) > 1:
+#         middle = len(arr) // 2  # Находим средний индекс массива
+#         left_half = arr[:middle]  # Делим массив на две половины: левую и правую
+#         right_half = arr[middle:]
+
+#         # Шаг 2: Рекурсивно сортируем обе половины
+#         merge_sort(left_half)
+#         merge_sort(right_half)
+
+#         # Шаг 3: Слияние (merge) отсортированных половин
+#         i = j = k = 0  # Индексы для левой, правой и общей частей массива
+
+#         while i < len(left_half) and j < len(right_half):
+#             if left_half[i] < right_half[j]:
+#                 arr[k] = left_half[i]
+#                 i += 1
+#             else:
+#                 arr[k] = right_half[j]
+#                 j += 1
+#             k += 1
+
+#         # Если в одной из половин остались элементы, добавляем их в конец
+#         while i < len(left_half):
+#             arr[k] = left_half[i]
+#             i += 1
+#             k += 1
+
+#         while j < len(right_half):
+#             arr[k] = right_half[j]
+#             j += 1
+#             k += 1
+
+# # Пример использования:
+# my_list = [64, 34, 25, 12, 22, 11, 90]
+# merge_sort(my_list)
+# print("Отсортированный список:", my_list)
+
+# -----------------------------------------------------------------------------------------------------
+# Quick Sort
+
+def quick_sort(arr):
+    if len(arr) <= 1:
+        return arr  # Если массив пустой или содержит один элемент, он считается отсортированным
+
+    pivot = arr[len(arr) // 2]  # Выбираем опорный элемент (в данном случае, средний элемент)
+    left = [x for x in arr if x < pivot]  # Элементы меньше опорного
+    middle = [x for x in arr if x == pivot]  # Элементы равные опорному
+    right = [x for x in arr if x > pivot]  # Элементы больше опорного
+
+    # Рекурсивно сортируем левую и правую части, а затем объединяем их с опорным элементом
+    return quick_sort(left) + middle + quick_sort(right)
 
 # Пример использования:
-
-graph = {
-    0: [1,2,3],
-    1: [0,2],
-    2: [0,1,4],
-    3: [0],
-    4: [2]
-}
-
-bfs(graph, 0)
+my_list = [64, 34, 25, 12, 22, 11, 90]
+sorted_list = quick_sort(my_list)
+print("Отсортированный список:", sorted_list)
