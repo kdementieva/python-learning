@@ -1,6 +1,6 @@
 import os
 import telebot
-import json
+import sqlite3
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -8,6 +8,38 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(current_dir, "dev.env"))
 
 bot = telebot.TeleBot(os.getenv('TOKEN'))
+
+def create_db_if_not_exists():
+    conn = sqlite3.connect('sleep_bot.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL
+    );
+    ''')
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS sleep_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        sleep_time DATETIME,
+        wake_time DATETIME,
+        sleep_quality INTEGER,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+    ''')
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        text TEXT,
+        sleep_record_id INTEGER,
+        FOREIGN KEY(sleep_record_id) REFERENCES sleep_records(id)
+    );
+    ''')
+    conn.commit()
+    conn.close()
+
+create_db_if_not_exists()
 
 SLEEP = 'sleep'
 WAKE = 'wake'
@@ -22,18 +54,20 @@ QUAL_MESSAGE = 'Спасибо за оценку качества сна!'
 NOTE_MESSAGE = 'Заметка успешно сохранена!'
 EMPTY = 'Пожалуйста, введи данные!'
 
-def save_data(data):
-    with open('sleep_data.json', 'w', encoding='utf-8') as file:
-        json.dump(data, file, ensure_ascii=False, indent=4)
+def get_db_connection():
+    conn = sqlite3.connect('sleep_bot.db', check_same_thread=False)
+    conn.isolation_level = None
+    return conn
 
-def load_data():
-    try:
-        with open('sleep_data.json', 'r', encoding='utf-8') as file:
-            return json.load(file)
-    except FileNotFoundError:
-        return {}
-
-data = load_data()
+def is_user(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM users WHERE id = (?)', (user_id,))
+    if cursor.fetchone() is None:
+        conn.close()
+        return False
+    conn.close()
+    return True
 
 @bot.message_handler(commands=['start'])
 def start(m):
@@ -42,61 +76,81 @@ def start(m):
 @bot.message_handler(commands=[SLEEP])
 def sleep_mess(m):
     user_id = m.from_user.id
+    username = m.from_user.username
     sleep_time = datetime.fromtimestamp(m.date)
-    if user_id not in data:
-        data[user_id] = {}
-    data[user_id]['sleep_time'] = sleep_time.isoformat()
-    save_data(data)
+    sleep_time_str = sleep_time.isoformat()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if not is_user(user_id):
+        conn.execute('INSERT INTO users(id, name) VALUES(?, ?)', (user_id, username))
+        conn.commit()
+    cursor.execute('INSERT INTO sleep_records (user_id, sleep_time) VALUES (?, ?)', (user_id, sleep_time_str))
+    conn.commit()
+    conn.close()
     bot.reply_to(m, text=SLEEP_MESSAGE)
 
 @bot.message_handler(commands=[WAKE])
 def wake_mess(m):
     user_id = m.from_user.id
-    if user_id not in data or 'sleep_time' not in data[user_id]:
-        return bot.send_message(m.chat.id, text=NO_SLEEP)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT sleep_time FROM sleep_records WHERE user_id = (?)', (user_id,))
+    record = cursor.fetchone()
 
+    if not is_user(user_id) and record is None:
+        return bot.send_message(m.chat.id, text=NO_SLEEP)
+    
     wake_time = datetime.fromtimestamp(m.date)
-    sleep_time = datetime.fromisoformat(data[user_id]['sleep_time'])
+    wake_time_str = wake_time.isoformat()
+    sleep_time = datetime.fromisoformat(record[0])
+    cursor.execute('UPDATE sleep_records SET wake_time = (?) WHERE user_id = (?) AND sleep_time = (?)', (wake_time_str, user_id, sleep_time))
+    conn.close()
 
     time_difference = (wake_time - sleep_time).total_seconds()
     hours = int(time_difference // 3600)
     minutes = int((time_difference % 3600) // 60)
-
-    data[user_id] = {'timedelta': time_difference}
-    save_data(data)
 
     bot.reply_to(m, text=WAKE_MESSAGE.format(hours=hours, minutes=minutes))
 
 @bot.message_handler(commands=[QUALITY])
 def qual_mess(m):
     user_id = m.from_user.id
-    if user_id not in data or 'timedelta' not in data[user_id]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT wake_time FROM sleep_records WHERE user_id = (?)', (user_id,))
+    record = cursor.fetchone()
+    if not is_user(user_id) or record is None:
         return bot.send_message(m.chat.id, text=NO_DATA)
     ans = m.text.split(maxsplit=1)
     if len(ans) < 2:
         return bot.send_message(m.chat.id, text=EMPTY)
     
     quality = ans[1]
-    data[user_id]['quality'] = quality
-    save_data(data)
+    cursor.execute('UPDATE sleep_records SET sleep_quality = (?) WHERE user_id = (?) AND wake_time = (?)', (quality, user_id, record[0]))
+    conn.commit()
+    conn.close()
 
     bot.reply_to(m, text=QUAL_MESSAGE)
 
 @bot.message_handler(commands=[NOTES])
 def note_mess(m):
     user_id = m.from_user.id
-    if user_id not in data or 'timedelta' not in data[user_id]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM sleep_records WHERE user_id = (?) AND wake_time IS NOT NULL', (user_id,))
+    record = cursor.fetchone()
+    if not is_user(user_id) or record is None:
         return bot.send_message(m.chat.id, text=NO_DATA)
     ans = m.text.split(maxsplit=1)
     if len(ans) < 2:
         return bot.send_message(m.chat.id, text=EMPTY)
 
     note = ans[1]
-    data[user_id]['notes'] = note
-    save_data(data)
+    cursor.execute('INSERT INTO notes (text, sleep_record_id) VALUES (?, ?)', (note, record[0]))
+    conn.commit()
+    conn.close()
 
     bot.reply_to(m, text=NOTE_MESSAGE)
 
-if __name__ == "__main__":
-    load_data()
-    bot.polling(none_stop=True, interval=0)
+
+bot.polling(none_stop=True, interval=0)
